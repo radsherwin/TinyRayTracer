@@ -6,7 +6,7 @@
 #include <iostream>
 
 //------------------------------------------------------------------------------------------------------
-//                                  Vect type decelerations
+//                                  Base Vect
 //------------------------------------------------------------------------------------------------------
 template<int vectSize> struct Vect
 {
@@ -229,6 +229,10 @@ template<> struct Vect<4>
             default: assert(false);
         }
     }
+    float dot(const Vect<4> &v) { return t_dot<4>(*this, v); }
+    float dot(const float f) { return t_dot<4>(*this, f); }
+    void norm() { return t_norm(*this); }
+    Vect<4> getNorm() { return t_getNorm(*this); }
 
     float x{};
     float y{};
