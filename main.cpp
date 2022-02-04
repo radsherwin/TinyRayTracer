@@ -1,95 +1,45 @@
 #include <limits>
-#include <cmath>
 #include <iostream>
 #include <fstream>
 #include <vector>
-struct Vec3f
+
+#include "MathLibrary.h"
+
+struct Material
 {
-    Vec3f() :x(0.0f), y(0.0f), z(0.0f)
+    Material(const Vec2f &a, const Vec3f &color, const float &spec) 
+        : albedo(a), diffuseColor(color), specularExponent(spec)
     {
     }
-    Vec3f(const float &_x, const float &_y, const float &_z) : x(_x), y(_y), z(_z)
+
+    Material() 
+        : albedo(1,0), diffuseColor(), specularExponent()
     {
     }
-    const float &operator[](const int &index) const
-    {
-        int a = index % 3;
-        switch (a)
-        {
-            case 0:
-                return x;
-            case 1:
-                return y;
-            case 2:
-                return z;
-            default:
-                return x;
-        }
 
-        return x;
+    Vec2f albedo;
+    Vec3f diffuseColor;
+    float specularExponent;
+};
+
+
+struct Light
+{
+    Light(const Vec3f &p, const float &i) : position(p), intensity(i)
+    {
     }
 
-    Vec3f operator-(const Vec3f &v) const
-    {
-        return Vec3f(x - v.x, y - v.y, z - v.z);
-    }
-    Vec3f operator+(const Vec3f &v) const
-    {
-        return Vec3f(x + v.x, y + v.y, z + v.z);
-    }
-
-    Vec3f operator*(const Vec3f &v) const
-    {
-        return Vec3f(x * v.x, y * v.y, z * v.z);
-    }
-
-    Vec3f operator*(const float &f) const
-    {
-        return Vec3f(x * f, y * f, z * f);
-    }
-
-    Vec3f operator/=(const Vec3f &v)
-    {
-        this->x /= v.x;
-        this->y /= v.y;
-        this->z /= v.z;
-
-        return *this;
-    }
-
-    float dot(const Vec3f &v)
-    {
-        return (this->x * v.x + this->y * v.y + this->z * v.z);
-    }
-
-    const float mag()
-    {
-        return sqrtf(x * x + y * y + z * z);
-    }
-
-    Vec3f norm()
-    {
-        const float mag = this->mag();
-
-        x /= mag;
-        y /= mag;
-        z /= mag;
-
-        return *this;
-
-    }
-
-    float x;
-    float y;
-    float z;
+    Vec3f position;
+    float intensity;
 };
 
 struct Sphere
 {
     Vec3f center;
     float radius;
+    Material material;
 
-    Sphere(const Vec3f &c, const float &r) : center(c), radius(r)
+    Sphere(const Vec3f &c, const float &r, const Material &m) : center(c), radius(r), material(m)
     {
     }
 
@@ -102,7 +52,7 @@ struct Sphere
         float thc = sqrtf(radius * radius - d2);
         t0 = tca - thc;
         float t1 = tca + thc;
-        if(t0 > t1) std::swap(t0, t1);
+        if (t0 > t1) std::swap(t0, t1);
         if (t0 < 0)
         {
             t0 = t1;
@@ -112,51 +62,108 @@ struct Sphere
     }
 };
 
-Vec3f cast_ray(const Vec3f &orig, const Vec3f &dir, const Sphere &sphere)
+Vec3f reflect(const Vec3f &I, const Vec3f &N)
 {
-    float sphere_dist = std::numeric_limits<float>::max();
-    if (!sphere.ray_intersect(orig, dir, sphere_dist))
+    return I-N*2.f*(I*N);
+}
+
+bool scene_intersect(const Vec3f &orig, const Vec3f &dir, const std::vector<Sphere> &spheres, Vec3f &hit, Vec3f &N, Material &material)
+{
+    float spheres_dist = std::numeric_limits<float>::max();
+    for (Sphere sphere : spheres)
     {
-        return Vec3f(0.2f, 0.7f, 0.3f);
+        float dist_i;
+        if (sphere.ray_intersect(orig, dir, dist_i) && dist_i < spheres_dist)
+        {
+            spheres_dist = dist_i;
+            hit = orig + dir * dist_i;
+            N = (hit - sphere.center).getNorm();
+            material = sphere.material;
+        }
     }
 
-    return Vec3f(0.4f, 0.4f, 0.3f);
+    return spheres_dist < 1000;
+}
+// the dot product of Vectors of unit length give the intensity of surface illumination
+Vec3f backgroundColor{ 0.2f, 0.7f, 0.8f };
+
+Vec3f cast_ray(const Vec3f &orig, const Vec3f &dir, const std::vector<Sphere> &spheres, const std::vector<Light> &lights)
+{
+    Vec3f point, N;
+    Material material;
+
+    if (!scene_intersect(orig, dir, spheres, point, N, material))
+    {
+        return backgroundColor;
+    }
+
+    float diffuseLightIntensity = 0.0f;
+    float specularLightIntensity = 0.0f;
+    for (Light light : lights)
+    {
+        Vec3f lightDir = (light.position - point).getNorm();
+        diffuseLightIntensity += light.intensity * std::max(0.f, lightDir.dot(N));
+        specularLightIntensity += powf(std::max(0.f, -reflect(-lightDir, N).dot(dir)), material.specularExponent) * (light.intensity);
+    }
+
+    return material.diffuseColor * diffuseLightIntensity * material.albedo[0] + Vec3f(1.f, 1.f, 1.f) * specularLightIntensity * material.albedo[1];
 }
 
 // Draw a "ray" from center of camera, through exch pixel, and check if that ray intersects with the sphere
-void render(const Sphere &sphere)
+void render(const std::vector<Sphere> &spheres, const std::vector<Light> &lights)
 {
     const int width = 1024;
     const int height = 768;
-    const int fov = 3.14159/2;
+    const int fov = 3.14159 / 2;
     std::vector<Vec3f> framebuffer(width * height);
 
+    #pragma omp parallel for
     for (size_t j = 0; j < height; j++)
     {
         for (size_t i = 0; i < width; i++)
         {
             float x = (2 * (i + 0.5f) / (float)width - 1.0f) * tanf(fov / 2.0f) * width / (float)height;
             float y = -(2 * (j + 0.5f) / (float)width - 1.0f) * tanf(fov / 2.0f);
-            Vec3f dir = Vec3f(x, y, -1.0f).norm();
-            framebuffer[i + j * width] = cast_ray(Vec3f(0,0,0), dir, sphere);
+            Vec3f dir = Vec3f(x, y, -1.0f).getNorm();
+            framebuffer[i + j * width] = cast_ray(Vec3f(0, 0, 0), dir, spheres, lights);
         }
     }
 
     std::ofstream ofs;
     ofs.open("./out.ppm", std::ofstream::out | std::ofstream::binary);
     ofs << "P6\n" << width << " " << height << "\n255\n";
-    for (size_t j = 0; j < height * width; ++j)
+    for (size_t i = 0; i< height * width; ++i)
     {
-        for (size_t i = 0; i < 3; i++)
+        Vec3f &c = framebuffer[i];
+        float max = std::max(c[0], std::max(c[1], c[2]));
+        if(max > 1) c = c*(1.f/max);
+        for (size_t j = 0; j < 3; j++)
         {
-            ofs << (char)(255 * std::max(0.f, std::min(1.f, framebuffer[j][i])));
+            ofs << (char)(255 * std::max(0.f, std::min(1.f, framebuffer[i][j])));
         }
     }
 }
 
 int main()
 {
-    Sphere sphere(Vec3f(-3,0,-16), 2.0f);
-    render(sphere);
+    Material ivory(Vec2f(0.6f, 0.3f), Vec3f(0.4f, 0.4f, 0.3f), 50.f);
+    Material redRubber(Vec2f(0.9f, 0.1f), Vec3f(0.3f, 0.1f, 0.1f), 10.f);
+
+    std::vector<Sphere> spheres
+    {
+        Sphere(Vec3f(-3,0,-16),          2.0f, ivory),
+        Sphere(Vec3f(-1,-1.5,-12),       2.0f, redRubber),
+        Sphere(Vec3f(1.5f, -0.5f,-18.f), 3.f,  redRubber),
+        Sphere(Vec3f(7,5,-18),           4.f,  ivory),
+    };
+
+    std::vector<Light> lights
+    {
+        Light(Vec3f(-20.f, 20.f, 20.f), 1.5f),
+        Light(Vec3f(30.f, 50.f, -25.f), 1.8f),
+        Light(Vec3f(30.f, 20.f, 30.f), 1.7f),
+    };
+
+    render(spheres, lights);
     return 0;
 }
