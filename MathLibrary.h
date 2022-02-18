@@ -5,6 +5,8 @@
 #include <cassert>
 #include <iostream>
 
+constexpr float tolerance = 0.0001f;
+
 //------------------------------------------------------------------------------------------------------
 //                                  Base Vect
 //------------------------------------------------------------------------------------------------------
@@ -66,28 +68,6 @@ template<int vectSize> Vect<vectSize> operator -(const Vect<vectSize> &lhs, cons
     return res;
 }
 
-template<int vectSize> Vect<vectSize> operator /(const Vect<vectSize> &lhs, const Vect<vectSize> &rhs)
-{
-    Vect<vectSize> res = lhs;
-
-    for (int i = vectSize; i--;)
-    {
-        res[i] /= rhs[i];
-    }
-
-    return res;
-}
-
-template<int vectSize> Vect<vectSize> operator /=(Vect<vectSize> &lhs, const Vect<vectSize> &rhs)
-{
-    for (int i = vectSize; i--;)
-    {
-        lhs[i] /= rhs[i];
-    }
-
-    return lhs;
-}
-
 template<int vectSize> Vect<vectSize> operator *(const Vect<vectSize> &lhs, const float scalar)
 {
     Vect<vectSize> res = lhs;
@@ -103,6 +83,11 @@ template<int vectSize> Vect<vectSize> operator *(const Vect<vectSize> &lhs, cons
 template<int vectSize> Vect<vectSize> operator-(Vect<vectSize> &lhs)
 {
     return lhs*(-1.f);
+}
+
+template<int vectSize> Vect<vectSize> operator-(const Vect<vectSize> &lhs)
+{
+    return lhs * (-1.f);
 }
 
 //------------------------------------------------------------------------------------------------------
@@ -133,6 +118,11 @@ template<int vectSize> float t_dot(const Vect<vectSize> &lhs, const float f)
 template<int vectSize> void t_norm(Vect<vectSize> &lhs)
 {
     float mag = std::sqrtf(t_dot<vectSize>(lhs, lhs));
+    if(fabsf(mag) <= tolerance) 
+    {
+        std::cout << "Division by 0 in t_norm" << std::endl;
+        return;
+    }
     for (int i = vectSize; i--;)
     {
         lhs[i] /= mag;
@@ -214,7 +204,7 @@ template<> struct Vect<4>
 
     float &operator[](const int i)
     {
-        assert(i >= 0 && i < 3);
+        assert(i >= 0 && i < 4);
         switch (i)
         {
             case 0: return x;
@@ -226,7 +216,7 @@ template<> struct Vect<4>
     }
     float  operator[](const int i) const
     {
-        assert(i >= 0 && i < 3);
+        assert(i >= 0 && i < 4);
         switch (i)
         {
             case 0: return x;

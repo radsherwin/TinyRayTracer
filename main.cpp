@@ -7,17 +7,18 @@
 
 struct Material
 {
-    Material(const Vec3f &a, const Vec3f &color, const float &spec) 
-        : albedo(a), diffuseColor(color), specularExponent(spec)
+    Material(const float &r, const Vec4f &a, const Vec3f &color, const float &spec) 
+        : refractiveIndex(r), albedo(a), diffuseColor(color), specularExponent(spec)
     {
     }
 
     Material() 
-        : albedo(1,0,0), diffuseColor(), specularExponent()
+        : refractiveIndex(1), albedo(1,0,0,0), diffuseColor(), specularExponent()
     {
     }
 
-    Vec3f albedo;
+    float refractiveIndex;
+    Vec4f albedo;
     Vec3f diffuseColor;
     float specularExponent;
 };
@@ -68,6 +69,24 @@ Vec3f reflect(const Vec3f &I, const Vec3f &N)
     return I-N*2.f*(I.dot(N));
 }
 
+Vec3f refract(const Vec3f &I, const Vec3f &N, const float &refractiveIndex)
+{
+    float cosi = -std::max(-1.0f, std::min(1.0f, I.dot(N)));
+    float etai = 1;
+    float etat = refractiveIndex;
+    Vec3f n = N;
+    // If the ray is inside the object, swap the indices and invert the normal to get the correct result
+    if(cosi < 0)
+    {
+        cosi = -cosi;
+        std::swap(etai, etat); 
+        n = -N;
+    }
+    const float eta = etai / etat;
+    float k = 1 - eta * eta * (1 - cosi * cosi);
+    return k < 0 ? Vec3f(0,0,0) : I*eta + n*(eta * cosi - sqrtf(k));
+}
+
 bool scene_intersect(const Vec3f &orig, const Vec3f &dir, const std::vector<Sphere> &spheres, Vec3f &hit, Vec3f &N, Material &material)
 {
     float spheres_dist = std::numeric_limits<float>::max();
@@ -99,8 +118,14 @@ Vec3f cast_ray(const Vec3f &orig, const Vec3f &dir, const std::vector<Sphere> &s
     }
 
     Vec3f reflectDir = reflect(dir, N).getNorm();
+    Vec3f refractDir = refract(dir, N, material.refractiveIndex).getNorm();
+
     Vec3f reflectOrig = reflectDir.dot(N) < 0 ? point - (N*1e-3) : point + N*1e-3; // slight offset because the point is directly on sphere
+    Vec3f refractOrig = refractDir.dot(N) < 0 ? point - N*1e-3 : point + N*1e-3;
+
     Vec3f reflectColor = cast_ray(reflectOrig, reflectDir, spheres, lights, depth+1);
+    Vec3f refractColor = cast_ray(refractOrig, refractDir, spheres, lights, depth+1);
+
 
     float diffuseLightIntensity = 0.0f;
     float specularLightIntensity = 0.0f;
@@ -122,7 +147,10 @@ Vec3f cast_ray(const Vec3f &orig, const Vec3f &dir, const std::vector<Sphere> &s
         specularLightIntensity += powf(std::max(0.f, -reflect(-lightDir, N).dot(dir)), material.specularExponent) * (light.intensity);
     }
 
-    return material.diffuseColor * diffuseLightIntensity * material.albedo[0] + Vec3f(1.f, 1.f, 1.f) * specularLightIntensity * material.albedo[1]  + reflectColor*material.albedo[2];
+    return material.diffuseColor * diffuseLightIntensity * material.albedo[0] +
+        Vec3f(1.f, 1.f, 1.f) * specularLightIntensity * material.albedo[1] +
+        reflectColor * material.albedo[2] +
+        refractColor * material.albedo[3];
 }
 
 // Draw a "ray" from center of camera, through exch pixel, and check if that ray intersects with the sphere
@@ -162,14 +190,15 @@ void render(const std::vector<Sphere> &spheres, const std::vector<Light> &lights
 
 int main()
 {
-    Material ivory(Vec3f(0.6f, 0.3f, 0.1f), Vec3f(0.4f, 0.4f, 0.3f), 50.f);
-    Material redRubber(Vec3f(0.9f, 0.1f, 0.0f), Vec3f(0.3f, 0.1f, 0.1f), 10.f);
-    Material mirror(Vec3f(0.0f, 10.0f, 0.8f), Vec3f(1.0f, 1.0f, 1.0f), 1425.0f);
+    Material      ivory(1.0f, Vec4f(0.6f, 0.3f, 0.1f, 0.0f), Vec3f(0.4f, 0.4f, 0.3f), 50.f);
+    Material      glass(1.5f, Vec4f(0.0f, 0.5f, 0.1f, 0.8f), Vec3f(0.6f, 0.7f, 0.8f), 125.f);
+    Material redRubber(1.0f, Vec4f(0.9f, 0.1f, 0.0f, 0.0f), Vec3f(0.3f, 0.1f, 0.1f), 10.f);
+    Material     mirror(1.0f, Vec4f(0.0f, 10.0f, 0.8f, 0.0f), Vec3f(1.0f, 1.0f, 1.0f), 1425.f);
 
     std::vector<Sphere> spheres
     {
         Sphere(Vec3f(-3,0,-16),          2.0f, ivory),
-        Sphere(Vec3f(-1,-1.5,-12),       2.0f, redRubber),
+        Sphere(Vec3f(-1,-1.5,-12),       2.0f, glass),
         Sphere(Vec3f(1.5f, -0.5f,-18.f), 3.f,  redRubber),
         Sphere(Vec3f(7,5,-18),           4.f,  mirror),
     };
