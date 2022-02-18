@@ -151,6 +151,11 @@ template<int vectSize> Vect<vectSize> t_getNorm(const Vect<vectSize> &lhs)
     return res;
 }
 
+template<int vectSize> float t_mag(const Vect<vectSize> &lhs)
+{
+    return std::sqrtf(t_dot<vectSize>(lhs, lhs));
+}
+
 //------------------------------------------------------------------------------------------------------
 //                                  Custom Vect Types
 //------------------------------------------------------------------------------------------------------
@@ -166,10 +171,11 @@ template<> struct Vect<2>
 
     float &operator[](const int i) { assert(i >= 0 && i < 2); return i ? y : x; }
     float  operator[](const int i) const { assert(i >= 0 && i < 2); return i ? y : x; }
-    float dot(const Vect<2> &v) {return t_dot<2>(*this, v);}
-    float dot(const float f) { return t_dot<2>(*this, f);}
+    float dot(const Vect<2> &v) const{return t_dot<2>(*this, v);}
+    float dot(const float f) const { return t_dot<2>(*this, f);}
     void norm() { return t_norm(*this);}
-    Vect<2> getNorm() { return t_getNorm(*this);}
+    Vect<2> getNorm() const { return t_getNorm(*this);}
+    float mag() const { return t_mag(*this);}
 
     float x{};
     float y{};
@@ -186,10 +192,11 @@ template<> struct Vect<3>
 
     float &operator[](const int i) { assert(i >= 0 && i < 3); return i ? (1 == i ? y : z) : x; }
     float  operator[](const int i) const { assert(i >= 0 && i < 3); return i ? (1 == i ? y : z) : x; }
-    float dot(const Vect<3> &v) { return t_dot<3>(*this, v); }
-    float dot(const float f) { return t_dot<3>(*this, f); }
+    float dot(const Vect<3> &v) const{ return t_dot<3>(*this, v); }
+    float dot(const float f) const { return t_dot<3>(*this, f); }
     void norm() { return t_norm(*this); }
-    Vect<3> getNorm() { return t_getNorm(*this);}
+    Vect<3> getNorm() const{ return t_getNorm(*this);}
+    float mag() const{ return t_mag(*this);}
 
     float x{};
     float y{};
@@ -229,10 +236,11 @@ template<> struct Vect<4>
             default: assert(false);
         }
     }
-    float dot(const Vect<4> &v) { return t_dot<4>(*this, v); }
-    float dot(const float f) { return t_dot<4>(*this, f); }
+    float dot(const Vect<4> &v) const { return t_dot<4>(*this, v); }
+    float dot(const float f) const { return t_dot<4>(*this, f); }
     void norm() { return t_norm(*this); }
-    Vect<4> getNorm() { return t_getNorm(*this); }
+    Vect<4> getNorm() const { return t_getNorm(*this); }
+    float mag() const { return t_mag(*this);}
 
     float x{};
     float y{};

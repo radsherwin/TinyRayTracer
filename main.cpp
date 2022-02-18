@@ -7,17 +7,17 @@
 
 struct Material
 {
-    Material(const Vec2f &a, const Vec3f &color, const float &spec) 
+    Material(const Vec3f &a, const Vec3f &color, const float &spec) 
         : albedo(a), diffuseColor(color), specularExponent(spec)
     {
     }
 
     Material() 
-        : albedo(1,0), diffuseColor(), specularExponent()
+        : albedo(1,0,0), diffuseColor(), specularExponent()
     {
     }
 
-    Vec2f albedo;
+    Vec3f albedo;
     Vec3f diffuseColor;
     float specularExponent;
 };
@@ -43,6 +43,7 @@ struct Sphere
     {
     }
 
+    // checking if ray coming out of camera hits this sphere
     bool ray_intersect(const Vec3f &orig, const Vec3f &dir, float &t0) const
     {
         Vec3f L = center - orig;
@@ -64,7 +65,7 @@ struct Sphere
 
 Vec3f reflect(const Vec3f &I, const Vec3f &N)
 {
-    return I-N*2.f*(I*N);
+    return I-N*2.f*(I.dot(N));
 }
 
 bool scene_intersect(const Vec3f &orig, const Vec3f &dir, const std::vector<Sphere> &spheres, Vec3f &hit, Vec3f &N, Material &material)
@@ -86,27 +87,42 @@ bool scene_intersect(const Vec3f &orig, const Vec3f &dir, const std::vector<Sphe
 }
 // the dot product of Vectors of unit length give the intensity of surface illumination
 Vec3f backgroundColor{ 0.2f, 0.7f, 0.8f };
-
-Vec3f cast_ray(const Vec3f &orig, const Vec3f &dir, const std::vector<Sphere> &spheres, const std::vector<Light> &lights)
+constexpr int recursionDepth = 8;
+Vec3f cast_ray(const Vec3f &orig, const Vec3f &dir, const std::vector<Sphere> &spheres, const std::vector<Light> &lights, size_t depth = 0)
 {
     Vec3f point, N;
     Material material;
-
-    if (!scene_intersect(orig, dir, spheres, point, N, material))
+    // POint is the "t" in line formula. The exact point at which intersects the sphere. 
+    if (depth > recursionDepth || !scene_intersect(orig, dir, spheres, point, N, material))
     {
         return backgroundColor;
     }
+
+    Vec3f reflectDir = reflect(dir, N).getNorm();
+    Vec3f reflectOrig = reflectDir.dot(N) < 0 ? point - (N*1e-3) : point + N*1e-3; // slight offset because the point is directly on sphere
+    Vec3f reflectColor = cast_ray(reflectOrig, reflectDir, spheres, lights, depth+1);
 
     float diffuseLightIntensity = 0.0f;
     float specularLightIntensity = 0.0f;
     for (Light light : lights)
     {
-        Vec3f lightDir = (light.position - point).getNorm();
-        diffuseLightIntensity += light.intensity * std::max(0.f, lightDir.dot(N));
+        // vector from lightOrigin to the point the ray intersected with the sphere
+        const Vec3f lightDirOrig = light.position - point;
+        Vec3f lightDir = lightDirOrig.getNorm();
+        float lightNormalDot = lightDir.dot(N);
+        // Shadow detection
+        float lightDistance = (light.position - point).mag();
+        Vec3f shadowOrig = lightNormalDot < 0 ? point - N*1e-3 : point + N*1e-3; // checking if the point lies in the shadow of the light
+        Vec3f shadowPt, shadowN;
+        Material tmpMaterial;
+        if(scene_intersect(shadowOrig, lightDir, spheres, shadowPt, shadowN, tmpMaterial) && (shadowPt-shadowOrig).mag() < lightDistance)
+            continue;
+
+        diffuseLightIntensity += light.intensity * std::max(0.f, lightNormalDot);
         specularLightIntensity += powf(std::max(0.f, -reflect(-lightDir, N).dot(dir)), material.specularExponent) * (light.intensity);
     }
 
-    return material.diffuseColor * diffuseLightIntensity * material.albedo[0] + Vec3f(1.f, 1.f, 1.f) * specularLightIntensity * material.albedo[1];
+    return material.diffuseColor * diffuseLightIntensity * material.albedo[0] + Vec3f(1.f, 1.f, 1.f) * specularLightIntensity * material.albedo[1]  + reflectColor*material.albedo[2];
 }
 
 // Draw a "ray" from center of camera, through exch pixel, and check if that ray intersects with the sphere
@@ -124,7 +140,7 @@ void render(const std::vector<Sphere> &spheres, const std::vector<Light> &lights
         {
             float x = (2 * (i + 0.5f) / (float)width - 1.0f) * tanf(fov / 2.0f) * width / (float)height;
             float y = -(2 * (j + 0.5f) / (float)width - 1.0f) * tanf(fov / 2.0f);
-            Vec3f dir = Vec3f(x, y, -1.0f).getNorm();
+            Vec3f dir = Vec3f(x, y, -1.0f).getNorm(); // cast ray from (0,0,0) to the pixel (x,y,-1.0f), -1.0f as is out on the Zaxis
             framebuffer[i + j * width] = cast_ray(Vec3f(0, 0, 0), dir, spheres, lights);
         }
     }
@@ -146,22 +162,23 @@ void render(const std::vector<Sphere> &spheres, const std::vector<Light> &lights
 
 int main()
 {
-    Material ivory(Vec2f(0.6f, 0.3f), Vec3f(0.4f, 0.4f, 0.3f), 50.f);
-    Material redRubber(Vec2f(0.9f, 0.1f), Vec3f(0.3f, 0.1f, 0.1f), 10.f);
+    Material ivory(Vec3f(0.6f, 0.3f, 0.1f), Vec3f(0.4f, 0.4f, 0.3f), 50.f);
+    Material redRubber(Vec3f(0.9f, 0.1f, 0.0f), Vec3f(0.3f, 0.1f, 0.1f), 10.f);
+    Material mirror(Vec3f(0.0f, 10.0f, 0.8f), Vec3f(1.0f, 1.0f, 1.0f), 1425.0f);
 
     std::vector<Sphere> spheres
     {
         Sphere(Vec3f(-3,0,-16),          2.0f, ivory),
         Sphere(Vec3f(-1,-1.5,-12),       2.0f, redRubber),
         Sphere(Vec3f(1.5f, -0.5f,-18.f), 3.f,  redRubber),
-        Sphere(Vec3f(7,5,-18),           4.f,  ivory),
+        Sphere(Vec3f(7,5,-18),           4.f,  mirror),
     };
 
     std::vector<Light> lights
     {
         Light(Vec3f(-20.f, 20.f, 20.f), 1.5f),
-        Light(Vec3f(30.f, 50.f, -25.f), 1.8f),
-        Light(Vec3f(30.f, 20.f, 30.f), 1.7f),
+        //Light(Vec3f(30.f, 50.f, -25.f), 1.8f),
+        //Light(Vec3f(30.f, 20.f, 30.f), 1.7f),
     };
 
     render(spheres, lights);
