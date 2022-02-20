@@ -34,6 +34,18 @@ template<int vectSize> Vect<vectSize> operator *(const Vect<vectSize> &lhs, cons
     return res;
 }
 
+template<int vectSize> Vect<vectSize> operator *(const float &a, const Vect<vectSize> &rhs)
+{
+    Vect<vectSize> res;
+
+    for (int i = vectSize; i--;)
+    {
+        res[i] = a * rhs[i];
+    }
+
+    return res;
+}
+
 template<int vectSize> Vect<vectSize> operator *=(const Vect<vectSize> &lhs, const Vect<vectSize> &rhs)
 {
     for (int i = vectSize; i--;)

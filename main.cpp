@@ -50,8 +50,13 @@ struct Sphere
         Vec3f L = center - orig;
         float tca = L.dot(dir);
         float d2 = L.dot(L) - tca * tca;
+        /* Checking to see if the traditional projection method works here
+        Vec3f myProj = L.dot(dir) * dir;
+        Vec3f dTest = L - myProj;
+        float dMag = dTest.dot(dTest);
+        */
         if (d2 > radius * radius) return false;
-        float thc = sqrtf(radius * radius - d2);
+        float thc = sqrtf(radius * radius - d2); // triangle formula: opposite^2 + adjacent^2 = hypotenuse^2
         t0 = tca - thc;
         float t1 = tca + thc;
         if (t0 > t1) std::swap(t0, t1);
